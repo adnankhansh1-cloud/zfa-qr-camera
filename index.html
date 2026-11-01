@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZFA QR Camera Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 520px;
+      margin: 20px auto;
+      padding: 15px;
+      text-align: center;
+    }
+    h2 { color: #183b60; }
+    button {
+      padding: 12px 20px;
+      margin: 8px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 6px;
+      background: #183b60;
+      color: white;
+      font-size: 15px;
+    }
+    #status { margin: 15px 0; }
+    #qr-reader { width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>ZFA QR Camera Scanner</h2>
+  <p>Keep the ZFA QR Management page open in the other tab.</p>
+
+  <button id="startButton" onclick="startCamera()">START CAMERA</button>
+  <button onclick="stopCamera()">STOP CAMERA</button>
+
+  <div id="status">Camera not started.</div>
+  <div id="qr-reader"></div>
+
+  <script>
+    let scanner = null;
+    let scanning = false;
+
+    function startCamera() {
+      if (scanning) return;
+
+      if (typeof Html5Qrcode === "undefined") {
+        document.getElementById("status").textContent =
+          "Scanner library could not load. Refresh this page.";
+        return;
+      }
+
+      scanner = new Html5Qrcode("qr-reader");
+
+      scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        function(decodedText) {
+          if (!decodedText || !window.opener) {
+            document.getElementById("status").textContent =
+              "QR detected but the ZFA page is not connected.";
+            return;
+          }
+
+          window.opener.postMessage({
+            type: "ZFA_QR_SCAN",
+            token: decodedText
+          }, "*");
+
+          document.getElementById("status").textContent =
+            "QR scanned and sent to ZFA QR Management.";
+
+          stopCamera();
+        },
+        function() {}
+      ).then(function() {
+        scanning = true;
+        document.getElementById("status").textContent =
+          "Camera is running. Point it at a ZFA QR code.";
+      }).catch(function(error) {
+        document.getElementById("status").textContent =
+          "Camera could not start: " + error;
+      });
+    }
+
+    function stopCamera() {
+      if (scanner && scanning) {
+        scanner.stop().then(function() {
+          scanner.clear();
+          scanning = false;
+          document.getElementById("status").textContent =
+            "Camera stopped.";
+        }).catch(function(error) {
+          document.getElementById("status").textContent =
+            "Could not stop camera: " + error;
+        });
+      }
+    }
+  </script>
+</body>
+</html>
