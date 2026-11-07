@@ -91,8 +91,13 @@
   <canvas id="captureCanvas" hidden></canvas>
 
   <div>
-    <button id="frontButton" type="button" disabled>Capture Front</button>
-    <button id="backButton" type="button" disabled>Capture Back</button>
+    <button id="frontButton" type="button" disabled>
+      Capture Front
+    </button>
+
+    <button id="backButton" type="button" disabled>
+      Capture Back
+    </button>
   </div>
 
   <p id="frontStatus">Front: Not captured</p>
@@ -147,7 +152,7 @@
       return true;
     }
 
-    return /^https:\/\/[a-z0-9-]+\.script\.googleusercontent\.com$/.test(origin);
+    return /^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(origin);
   }
 
   function connectionChecks() {
@@ -211,8 +216,10 @@
   document.getElementById("startButton")
     .addEventListener("click", async function () {
       try {
-        if (!navigator.mediaDevices ||
-            !navigator.mediaDevices.getUserMedia) {
+        if (
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia
+        ) {
           throw new Error(
             "Camera access is unavailable. Please use HTTPS in Chrome."
           );
@@ -295,9 +302,13 @@
       ": Captured";
 
     if (side === "front") {
-      setStatus("Front captured. Now capture the back of the CNIC.");
+      setStatus(
+        "Front captured. Now capture the back of the CNIC."
+      );
     } else {
-      setStatus("Back captured. Both sides are ready.");
+      setStatus(
+        "Back captured. Both sides are ready."
+      );
     }
 
     updateButtons();
@@ -317,15 +328,21 @@
     .addEventListener("click", function () {
       if (!connectionIsValid()) {
         showDiagnostics();
+
         setStatus(
-          "Secure ZFA connection not found. Please check the diagnostics.",
+          "Secure ZFA connection not found. Check diagnostics.",
           true
         );
+
         return;
       }
 
       if (!captured.front || !captured.back) {
-        setStatus("Please capture both sides first.", true);
+        setStatus(
+          "Please capture both sides first.",
+          true
+        );
+
         return;
       }
 
@@ -342,6 +359,7 @@
         );
 
         stopCamera();
+
         document.getElementById("sendButton").disabled = true;
 
       } catch (error) {
@@ -357,7 +375,7 @@
 
   if (!connectionIsValid()) {
     setStatus(
-      "Secure connection check failed. See Connection Diagnostics below.",
+      "Secure connection check failed. See Connection Diagnostics.",
       true
     );
 
