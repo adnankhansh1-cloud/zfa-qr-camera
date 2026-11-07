@@ -61,11 +61,19 @@
       font-size: 13px;
       line-height: 1.5;
     }
+
+    #diagnostics {
+      white-space: pre-wrap;
+      font-size: 12px;
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 7px;
+      overflow-wrap: anywhere;
+    }
   </style>
 </head>
 
 <body>
-
 <div class="panel">
 
   <h2>ZFA — CNIC Camera Capture</h2>
@@ -76,26 +84,15 @@
     for Gemini OCR processing.
   </p>
 
-  <button id="startButton" type="button" disabled>
-    Start Camera
-  </button>
-
-  <button id="stopButton" type="button">
-    Stop Camera
-  </button>
+  <button id="startButton" type="button">Start Camera</button>
+  <button id="stopButton" type="button">Stop Camera</button>
 
   <video id="camera" autoplay playsinline muted></video>
-
   <canvas id="captureCanvas" hidden></canvas>
 
   <div>
-    <button id="frontButton" type="button" disabled>
-      Capture Front
-    </button>
-
-    <button id="backButton" type="button" disabled>
-      Capture Back
-    </button>
+    <button id="frontButton" type="button" disabled>Capture Front</button>
+    <button id="backButton" type="button" disabled>Capture Back</button>
   </div>
 
   <p id="frontStatus">Front: Not captured</p>
@@ -106,8 +103,11 @@
   </button>
 
   <div id="status" role="status">
-    Checking connection with ZFA...
+    Checking secure ZFA connection...
   </div>
+
+  <h4>Connection Diagnostics</h4>
+  <div id="diagnostics">Checking...</div>
 
   <p class="small">
     Images are temporarily held in this browser page.
@@ -135,12 +135,7 @@
   var video = document.getElementById("camera");
   var canvas = document.getElementById("captureCanvas");
   var status = document.getElementById("status");
-
-  var startButton = document.getElementById("startButton");
-  var stopButton = document.getElementById("stopButton");
-  var frontButton = document.getElementById("frontButton");
-  var backButton = document.getElementById("backButton");
-  var sendButton = document.getElementById("sendButton");
+  var diagnostics = document.getElementById("diagnostics");
 
   function setStatus(message, isError) {
     status.textContent = message;
@@ -167,7 +162,7 @@
   function connectionIsValid() {
     var checks = connectionChecks();
 
-    return Boolean(
+    return (
       checks.nonceReceived &&
       checks.parentOriginReceived &&
       checks.parentOriginAllowed &&
@@ -175,43 +170,27 @@
     );
   }
 
-  function showConnectionStatus() {
-    var checks = connectionChecks();
-
-    console.log("ZFA CNIC connection checks:", checks);
-
-    if (!connectionIsValid()) {
-      setStatus(
-        "ZFA connection check failed: " +
-        JSON.stringify(checks),
-        true
-      );
-
-      startButton.disabled = true;
-      updateButtons();
-
-      return false;
-    }
-
-    setStatus(
-      "Secure connection parameters received from ZFA. You can start the camera."
+  function showDiagnostics() {
+    diagnostics.textContent = JSON.stringify(
+      connectionChecks(),
+      null,
+      2
     );
-
-    startButton.disabled = false;
-    updateButtons();
-
-    return true;
   }
 
   function updateButtons() {
-    frontButton.disabled = !cameraStream;
-    backButton.disabled = !cameraStream;
+    document.getElementById("frontButton").disabled =
+      !cameraStream;
 
-    sendButton.disabled = !(
-      captured.front &&
-      captured.back &&
-      connectionIsValid()
-    );
+    document.getElementById("backButton").disabled =
+      !cameraStream;
+
+    document.getElementById("sendButton").disabled =
+      !(
+        captured.front &&
+        captured.back &&
+        connectionIsValid()
+      );
   }
 
   function stopCamera() {
@@ -229,72 +208,56 @@
     updateButtons();
   }
 
-  startButton.addEventListener("click", async function () {
-    try {
-      if (!connectionIsValid()) {
-        showConnectionStatus();
-        return;
-      }
+  document.getElementById("startButton")
+    .addEventListener("click", async function () {
+      try {
+        if (!navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia) {
+          throw new Error(
+            "Camera access is unavailable. Please use HTTPS in Chrome."
+          );
+        }
 
-      if (
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-      ) {
-        throw new Error(
-          "Camera access is unavailable. Please use HTTPS in Chrome."
+        stopCamera();
+
+        cameraStream =
+          await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
+            audio: false
+          });
+
+        video.srcObject = cameraStream;
+        await video.play();
+
+        setStatus(
+          "Camera ready. Capture the front of the CNIC first."
+        );
+
+        updateButtons();
+
+      } catch (error) {
+        stopCamera();
+
+        setStatus(
+          "Camera error: " + (error.message || String(error)),
+          true
         );
       }
+    });
 
+  document.getElementById("stopButton")
+    .addEventListener("click", function () {
       stopCamera();
-
-      cameraStream =
-        await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: {
-              ideal: "environment"
-            },
-            width: {
-              ideal: 1920
-            },
-            height: {
-              ideal: 1080
-            }
-          },
-          audio: false
-        });
-
-      video.srcObject = cameraStream;
-
-      await video.play();
-
-      setStatus(
-        "Camera ready. Capture the front of the CNIC first."
-      );
-
-      updateButtons();
-
-    } catch (error) {
-      stopCamera();
-
-      setStatus(
-        "Camera error: " +
-        (error.message || String(error)),
-        true
-      );
-    }
-  });
-
-  stopButton.addEventListener("click", function () {
-    stopCamera();
-    setStatus("Camera stopped.");
-  });
+      setStatus("Camera stopped.");
+    });
 
   function captureSide(side) {
     if (!cameraStream || !video.videoWidth) {
-      setStatus(
-        "Please start the camera first.",
-        true
-      );
+      setStatus("Please start the camera first.", true);
       return;
     }
 
@@ -332,76 +295,83 @@
       ": Captured";
 
     if (side === "front") {
-      setStatus(
-        "Front captured. Now capture the back of the CNIC."
-      );
+      setStatus("Front captured. Now capture the back of the CNIC.");
     } else {
-      setStatus(
-        "Back captured. Both sides are ready."
-      );
+      setStatus("Back captured. Both sides are ready.");
     }
 
     updateButtons();
   }
 
-  frontButton.addEventListener("click", function () {
-    captureSide("front");
-  });
+  document.getElementById("frontButton")
+    .addEventListener("click", function () {
+      captureSide("front");
+    });
 
-  backButton.addEventListener("click", function () {
-    captureSide("back");
-  });
+  document.getElementById("backButton")
+    .addEventListener("click", function () {
+      captureSide("back");
+    });
 
-  sendButton.addEventListener("click", function () {
-    if (!connectionIsValid()) {
-      setStatus(
-        "Secure ZFA connection not found. Reopen this page from the ZFA Sale Receipt.",
-        true
-      );
-      return;
-    }
+  document.getElementById("sendButton")
+    .addEventListener("click", function () {
+      if (!connectionIsValid()) {
+        showDiagnostics();
+        setStatus(
+          "Secure ZFA connection not found. Please check the diagnostics.",
+          true
+        );
+        return;
+      }
 
-    if (!captured.front || !captured.back) {
-      setStatus(
-        "Please capture both sides first.",
-        true
-      );
-      return;
-    }
+      if (!captured.front || !captured.back) {
+        setStatus("Please capture both sides first.", true);
+        return;
+      }
 
-    try {
-      window.opener.postMessage({
-        type: "ZFA_CNIC_CAPTURED",
-        nonce: nonce,
+      try {
+        window.opener.postMessage({
+          type: "ZFA_CNIC_CAPTURED",
+          nonce: nonce,
+          front: captured.front,
+          back: captured.back
+        }, parentOrigin);
 
-        // Matches the format expected by ZFA_Dashboard.html
-        front: captured.front,
-        back: captured.back
+        setStatus(
+          "Images sent to ZFA. Return to the original ZFA Sale Receipt page."
+        );
 
-      }, parentOrigin);
+        stopCamera();
+        document.getElementById("sendButton").disabled = true;
 
-      setStatus(
-        "Images sent to ZFA. Please return to the original Sale Receipt tab."
-      );
+      } catch (error) {
+        setStatus(
+          "Could not return images: " +
+          (error.message || String(error)),
+          true
+        );
+      }
+    });
 
-      stopCamera();
-      sendButton.disabled = true;
+  showDiagnostics();
 
-    } catch (error) {
-      setStatus(
-        "Could not return images: " +
-        (error.message || String(error)),
-        true
-      );
-    }
-  });
+  if (!connectionIsValid()) {
+    setStatus(
+      "Secure connection check failed. See Connection Diagnostics below.",
+      true
+    );
 
-  showConnectionStatus();
+    document.getElementById("startButton").disabled = true;
+
+  } else {
+    setStatus(
+      "Secure connection parameters received. Start the camera when ready."
+    );
+  }
 
   window.addEventListener("beforeunload", stopCamera);
 
 })();
 </script>
-
 </body>
 </html>
