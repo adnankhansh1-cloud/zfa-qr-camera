@@ -1,0 +1,413 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZFA CNIC Camera</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 650px;
+      margin: 20px auto;
+      padding: 16px;
+      color: #1e293b;
+      background: #f8fafc;
+    }
+
+    .panel {
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    video {
+      width: 100%;
+      max-height: 420px;
+      background: #111827;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    button {
+      padding: 11px 15px;
+      margin: 6px 4px 6px 0;
+      border: 0;
+      border-radius: 7px;
+      background: #1d4ed8;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 14px;
+      padding: 10px;
+      background: #f1f5f9;
+      border-radius: 7px;
+      line-height: 1.5;
+    }
+
+    .small {
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="panel">
+
+  <h2>ZFA — CNIC Camera Capture</h2>
+
+  <p>
+    Capture both sides of the CNIC clearly.
+    Images will be returned to the connected ZFA Sale Receipt
+    for Gemini OCR processing.
+  </p>
+
+  <button id="startButton" type="button">Start Camera</button>
+  <button id="stopButton" type="button">Stop Camera</button>
+
+  <video id="camera" autoplay playsinline muted></video>
+
+  <canvas id="captureCanvas" hidden></canvas>
+
+  <div>
+    <button id="frontButton" type="button" disabled>
+      Capture Front
+    </button>
+
+    <button id="backButton" type="button" disabled>
+      Capture Back
+    </button>
+  </div>
+
+  <p id="frontStatus">Front: Not captured</p>
+  <p id="backStatus">Back: Not captured</p>
+
+  <button id="sendButton" type="button" disabled>
+    Return Both Images to ZFA
+  </button>
+
+  <div id="status" role="status">
+    Waiting for a secure connection from ZFA.
+  </div>
+
+  <p class="small">
+    Images are temporarily held in this browser page.
+    Do not close this page until they have been returned to ZFA.
+  </p>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var params = new URLSearchParams(window.location.search);
+
+  var nonce = params.get("nonce") || "";
+  var parentOrigin = params.get("parentOrigin") || "";
+
+  var cameraStream = null;
+
+  var captured = {
+    front: null,
+    back: null
+  };
+
+  var video = document.getElementById("camera");
+  var canvas = document.getElementById("captureCanvas");
+  var status = document.getElementById("status");
+
+  function setStatus(message, isError) {
+    status.textContent = message;
+    status.style.color = isError ? "#b91c1c" : "#334155";
+  }
+
+  function validParentOrigin(origin) {
+    if (
+      origin === "https://script.google.com"
+    ) {
+      return true;
+    }
+
+    return /^https:\/\/[a-z0-9-]+\.script\.googleusercontent\.com$/.test(origin);
+  }
+
+  function connectionIsValid() {
+    return Boolean(
+      nonce &&
+      window.opener &&
+      parentOrigin &&
+      validParentOrigin(parentOrigin)
+    );
+  }
+
+  function updateButtons() {
+    document.getElementById("frontButton").disabled =
+      !cameraStream;
+
+    document.getElementById("backButton").disabled =
+      !cameraStream;
+
+    document.getElementById("sendButton").disabled =
+      !(
+        captured.front &&
+        captured.back &&
+        connectionIsValid()
+      );
+  }
+
+  function stopCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+
+      cameraStream = null;
+    }
+
+    video.pause();
+    video.srcObject = null;
+
+    updateButtons();
+  }
+
+  document.getElementById("startButton")
+    .addEventListener("click", async function () {
+
+      try {
+
+        if (
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia
+        ) {
+          throw new Error(
+            "Camera access is unavailable. Please use HTTPS in Chrome."
+          );
+        }
+
+        stopCamera();
+
+        cameraStream =
+          await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: {
+                ideal: "environment"
+              },
+              width: {
+                ideal: 1920
+              },
+              height: {
+                ideal: 1080
+              }
+            },
+            audio: false
+          });
+
+        video.srcObject = cameraStream;
+
+        await video.play();
+
+        setStatus(
+          "Camera ready. Capture the front of the CNIC first."
+        );
+
+        updateButtons();
+
+      } catch (error) {
+
+        stopCamera();
+
+        setStatus(
+          "Camera error: " +
+          (error.message || String(error)),
+          true
+        );
+
+      }
+
+    });
+
+  document.getElementById("stopButton")
+    .addEventListener("click", function () {
+
+      stopCamera();
+
+      setStatus("Camera stopped.");
+
+    });
+
+  function captureSide(side) {
+
+    if (!cameraStream || !video.videoWidth) {
+
+      setStatus(
+        "Please start the camera first.",
+        true
+      );
+
+      return;
+    }
+
+    var maxDimension = 1600;
+
+    var scale = Math.min(
+      1,
+      maxDimension /
+      Math.max(video.videoWidth, video.videoHeight)
+    );
+
+    canvas.width =
+      Math.round(video.videoWidth * scale);
+
+    canvas.height =
+      Math.round(video.videoHeight * scale);
+
+    var context = canvas.getContext("2d");
+
+    context.drawImage(
+      video,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    var dataUrl =
+      canvas.toDataURL("image/jpeg", 0.82);
+
+    captured[side] = {
+      mimeType: "image/jpeg",
+      base64: dataUrl.split(",")[1]
+    };
+
+    document.getElementById(side + "Status")
+      .textContent =
+        side.charAt(0).toUpperCase() +
+        side.slice(1) +
+        ": Captured";
+
+    if (side === "front") {
+
+      setStatus(
+        "Front captured. Now capture the back of the CNIC."
+      );
+
+    } else {
+
+      setStatus(
+        "Back captured. Both sides are ready."
+      );
+
+    }
+
+    updateButtons();
+  }
+
+  document.getElementById("frontButton")
+    .addEventListener("click", function () {
+      captureSide("front");
+    });
+
+  document.getElementById("backButton")
+    .addEventListener("click", function () {
+      captureSide("back");
+    });
+
+  document.getElementById("sendButton")
+    .addEventListener("click", function () {
+
+      if (!connectionIsValid()) {
+
+        setStatus(
+          "Secure ZFA connection not found. Reopen this page from the ZFA Sale Receipt.",
+          true
+        );
+
+        return;
+      }
+
+      if (!captured.front || !captured.back) {
+
+        setStatus(
+          "Please capture both sides first.",
+          true
+        );
+
+        return;
+      }
+
+      try {
+
+        window.opener.postMessage({
+
+          type: "ZFA_CNIC_CAPTURED",
+
+          nonce: nonce,
+
+          images: {
+            front: captured.front,
+            back: captured.back
+          }
+
+        }, parentOrigin);
+
+        setStatus(
+          "Images sent. Please return to the original ZFA Sale Receipt page."
+        );
+
+        stopCamera();
+
+        document.getElementById("sendButton").disabled = true;
+
+      } catch (error) {
+
+        setStatus(
+          "Could not return images: " +
+          (error.message || String(error)),
+          true
+        );
+
+      }
+
+    });
+
+  if (!connectionIsValid()) {
+
+    setStatus(
+      "Please open this camera page from the ZFA Sale Receipt. Direct access is not supported.",
+      true
+    );
+
+    document.getElementById("startButton").disabled = true;
+
+  } else {
+
+    setStatus(
+      "Secure connection parameters received. Start the camera when ready."
+    );
+
+  }
+
+  window.addEventListener(
+    "beforeunload",
+    stopCamera
+  );
+
+})();
+</script>
+
+</body>
+</html>
